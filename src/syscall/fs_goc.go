@@ -6,6 +6,8 @@
 
 package syscall
 
+import "unsafe"
+
 func Open(path string, openmode int, perm uint32) (int, error) {
 	return 0, ENOSYS
 }
@@ -110,12 +112,32 @@ func Fsync(fd int) error {
 	return ENOSYS
 }
 
+func readFile(fd uintptr, p unsafe.Pointer, n int32) int32
+
 func Read(fd int, b []byte) (int, error) {
-	return 0, ENOSYS
+	ln := int32(len(b))
+	if ln == 0 {
+		return 0, nil
+	}
+
+	if n := readFile(uintptr(fd), unsafe.Pointer(&b[0]), ln); n != ln {
+		return int(n), EIO
+	}
+	return int(ln), nil
 }
 
+func writeFile(fd uintptr, p unsafe.Pointer, n int32) int32
+
 func Write(fd int, b []byte) (int, error) {
-	return 0, ENOSYS
+	ln := int32(len(b))
+	if ln == 0 {
+		return 0, nil
+	}
+
+	if n := writeFile(uintptr(fd), unsafe.Pointer(&b[0]), ln); n != ln {
+		return int(n), EIO
+	}
+	return int(ln), nil
 }
 
 func Pread(fd int, b []byte, offset int64) (int, error) {
