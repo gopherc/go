@@ -2,13 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build js,wasm,!goc
+// +build js,wasm,goc
 
 package time
 
 import (
 	"runtime"
-	"syscall/js"
 )
 
 var zoneSources = []string{
@@ -18,18 +17,15 @@ var zoneSources = []string{
 	runtime.GOROOT() + "/lib/time/zoneinfo.zip",
 }
 
+func getTimezoneOffset() int
+
 func initLocal() {
 	localLoc.name = "Local"
 
 	z := zone{}
-	d := js.Global().Get("Date").New()
-	offset := d.Call("getTimezoneOffset").Int() * -1
+	//TODO: Use and implement getTimezoneOffset. /aj
+	offset := 0 //getTimezoneOffset()
 	z.offset = offset * 60
-	// According to https://tc39.github.io/ecma262/#sec-timezoneestring,
-	// the timezone name from (new Date()).toTimeString() is an implementation-dependent
-	// result, and in Google Chrome, it gives the fully expanded name rather than
-	// the abbreviation.
-	// Hence, we construct the name from the offset.
 	z.name = "UTC"
 	if offset < 0 {
 		z.name += "-"
