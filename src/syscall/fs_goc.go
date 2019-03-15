@@ -6,7 +6,10 @@
 
 package syscall
 
-import "unsafe"
+import (
+	_ "syscall/js" // Need init to call setEventHandler
+	"unsafe"
+)
 
 func Open(path string, openmode int, perm uint32) (int, error) {
 	return 0, ENOSYS
