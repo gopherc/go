@@ -18,7 +18,6 @@ import (
 	"cmd/go/internal/mvs"
 	"cmd/go/internal/renameio"
 	"cmd/go/internal/search"
-	"cmd/go/internal/str"
 	"encoding/json"
 	"fmt"
 	"go/build"
@@ -34,7 +33,7 @@ import (
 
 var (
 	cwd            string // TODO(bcmills): Is this redundant with base.Cwd?
-	MustUseModules = mustUseModules()
+	mustUseModules = true
 	initialized    bool
 
 	modRoot     string
@@ -42,6 +41,15 @@ var (
 	modFileData []byte
 	excluded    map[module.Version]bool
 	Target      module.Version
+
+	// targetPrefix is the path prefix for packages in Target, without a trailing
+	// slash. For most modules, targetPrefix is just Target.Path, but the
+	// standard-library module "std" has an empty prefix.
+	targetPrefix string
+
+	// targetInGorootSrc caches whether modRoot is within GOROOT/src.
+	// The "std" module is special within GOROOT/src, but not otherwise.
+	targetInGorootSrc bool
 
 	gopath string
 
@@ -70,16 +78,6 @@ func BinDir() string {
 	return filepath.Join(gopath, "bin")
 }
 
-// mustUseModules reports whether we are invoked as vgo
-// (as opposed to go).
-// If so, we only support builds with go.mod files.
-func mustUseModules() bool {
-	name := os.Args[0]
-	name = name[strings.LastIndex(name, "/")+1:]
-	name = name[strings.LastIndex(name, `\`)+1:]
-	return strings.HasPrefix(name, "vgo")
-}
-
 var inGOPATH bool // running in GOPATH/src
 
 // Init determines whether module mode is enabled, locates the root of the
@@ -96,14 +94,13 @@ func Init() {
 	switch env {
 	default:
 		base.Fatalf("go: unknown environment setting GO111MODULE=%s", env)
-	case "", "auto":
-		// leave MustUseModules alone
-	case "on":
-		MustUseModules = true
+	case "auto":
+		mustUseModules = false
+	case "on", "":
+		mustUseModules = true
 	case "off":
-		if !MustUseModules {
-			return
-		}
+		mustUseModules = false
+		return
 	}
 
 	// Disable any prompting for passwords by Git.
@@ -150,7 +147,7 @@ func Init() {
 		}
 	}
 
-	if inGOPATH && !MustUseModules {
+	if inGOPATH && !mustUseModules {
 		if CmdModInit {
 			die() // Don't init a module that we're just going to ignore.
 		}
@@ -167,8 +164,8 @@ func Init() {
 	} else {
 		modRoot = findModuleRoot(cwd)
 		if modRoot == "" {
-			if !MustUseModules {
-				// GO111MODULE is 'auto' (or unset), and we can't find a module root.
+			if !mustUseModules {
+				// GO111MODULE is 'auto', and we can't find a module root.
 				// Stay in GOPATH mode.
 				return
 			}
@@ -267,7 +264,7 @@ func init() {
 // (usually through MustModRoot).
 func Enabled() bool {
 	Init()
-	return modRoot != "" || MustUseModules
+	return modRoot != "" || mustUseModules
 }
 
 // ModRoot returns the root of the main module.
@@ -300,7 +297,7 @@ func die() {
 	if os.Getenv("GO111MODULE") == "off" {
 		base.Fatalf("go: modules disabled by GO111MODULE=off; see 'go help modules'")
 	}
-	if inGOPATH && !MustUseModules {
+	if inGOPATH && !mustUseModules {
 		base.Fatalf("go: modules disabled inside GOPATH/src by GO111MODULE=auto; see 'go help modules'")
 	}
 	if cwd != "" {
@@ -329,6 +326,7 @@ func InitMod() {
 	Init()
 	if modRoot == "" {
 		Target = module.Version{Path: "command-line-arguments"}
+		targetPrefix = "command-line-arguments"
 		buildList = []module.Version{Target}
 		return
 	}
@@ -381,9 +379,12 @@ func InitMod() {
 // modFileToBuildList initializes buildList from the modFile.
 func modFileToBuildList() {
 	Target = modFile.Module.Mod
-	if (str.HasPathPrefix(Target.Path, "std") || str.HasPathPrefix(Target.Path, "cmd")) &&
-		search.InDir(cwd, cfg.GOROOTsrc) == "" {
-		base.Fatalf("go: reserved module path %s not allow outside of GOROOT/src", Target.Path)
+	targetPrefix = Target.Path
+	if search.InDir(cwd, cfg.GOROOTsrc) != "" {
+		targetInGorootSrc = true
+		if Target.Path == "std" {
+			targetPrefix = ""
+		}
 	}
 
 	list := []module.Version{Target}
@@ -430,13 +431,6 @@ func legacyModInit() {
 			}
 			return
 		}
-	}
-}
-
-// InitGoStmt adds a go statement, unless there already is one.
-func InitGoStmt() {
-	if modFile.Go == nil {
-		addGoStmt()
 	}
 }
 

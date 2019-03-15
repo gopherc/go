@@ -419,9 +419,10 @@ func (t *tester) registerTests() {
 		if !t.race {
 			cmd.Args = append(cmd.Args, "cmd")
 		}
+		cmd.Stderr = new(bytes.Buffer)
 		all, err := cmd.Output()
 		if err != nil {
-			log.Fatalf("Error running go list std cmd: %v, %s", err, all)
+			log.Fatalf("Error running go list std cmd: %v:\n%s", err, cmd.Stderr)
 		}
 		pkgs := strings.Fields(string(all))
 		for _, pkg := range pkgs {
@@ -737,6 +738,12 @@ func (t *tester) registerTests() {
 				return nil
 			},
 		})
+	}
+
+	// Ensure that the toolchain can bootstrap itself.
+	// This test adds another ~45s to all.bash if run sequentially, so run it only on the builders.
+	if os.Getenv("GO_BUILDER_NAME") != "" && goos != "android" && !t.iOS() {
+		t.registerHostTest("reboot", "../misc/reboot", "misc/reboot", ".")
 	}
 }
 

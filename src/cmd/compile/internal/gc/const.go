@@ -584,14 +584,6 @@ func Isconst(n *Node, ct Ctype) bool {
 
 // evconst rewrites constant expressions into OLITERAL nodes.
 func evconst(n *Node) {
-	if !n.isGoConst() {
-		// Avoid constant evaluation of things that aren't actually constants
-		// according to the spec. See issue 24760.
-		// The SSA backend has a more robust optimizer that will catch
-		// all of these weird cases (like uintptr(unsafe.Pointer(uintptr(1)))).
-		return
-	}
-
 	nl, nr := n.Left, n.Right
 
 	// Pick off just the opcodes that can be constant evaluated.
@@ -626,15 +618,16 @@ func evconst(n *Node) {
 		}
 
 	case OCONV:
-		if n.Type != nil && okforconst[n.Type.Etype] && nl.Op == OLITERAL {
+		if okforconst[n.Type.Etype] && nl.Op == OLITERAL {
 			// TODO(mdempsky): There should be a convval function.
 			setconst(n, convlit1(nl, n.Type, true, false).Val())
 		}
 
-	case OBYTES2STR:
-		// string([]byte(nil)) or string([]rune(nil))
-		if nl.Op == OLITERAL && nl.Val().Ctype() == CTNIL {
-			setconst(n, Val{U: ""})
+	case OCONVNOP:
+		if okforconst[n.Type.Etype] && nl.Op == OLITERAL {
+			// set so n.Orig gets OCONV instead of OCONVNOP
+			n.Op = OCONV
+			setconst(n, nl.Val())
 		}
 
 	case OADDSTR:
@@ -663,6 +656,60 @@ func evconst(n *Node) {
 			n.SetVal(s[0].Val())
 		} else {
 			n.List.Set(s)
+		}
+
+	case OCAP, OLEN:
+		switch nl.Type.Etype {
+		case TSTRING:
+			if Isconst(nl, CTSTR) {
+				setintconst(n, int64(len(nl.Val().U.(string))))
+			}
+		case TARRAY:
+			if !hascallchan(nl) {
+				setintconst(n, nl.Type.NumElem())
+			}
+		}
+
+	case OALIGNOF, OOFFSETOF, OSIZEOF:
+		setintconst(n, evalunsafe(n))
+
+	case OREAL, OIMAG:
+		if nl.Op == OLITERAL {
+			var re, im *Mpflt
+			switch u := nl.Val().U.(type) {
+			case *Mpint:
+				re = newMpflt()
+				re.SetInt(u)
+				// im = 0
+			case *Mpflt:
+				re = u
+				// im = 0
+			case *Mpcplx:
+				re = &u.Real
+				im = &u.Imag
+			default:
+				Fatalf("impossible")
+			}
+			if n.Op == OIMAG {
+				if im == nil {
+					im = newMpflt()
+				}
+				re = im
+			}
+			setconst(n, Val{re})
+		}
+
+	case OCOMPLEX:
+		if nl == nil || nr == nil {
+			// TODO(mdempsky): Remove after early OAS2FUNC rewrite CL lands.
+			break
+		}
+		if nl.Op == OLITERAL && nr.Op == OLITERAL {
+			// make it a complex literal
+			c := newMpcmplx()
+			c.Real.Set(toflt(nl.Val()).U.(*Mpflt))
+			c.Imag.Set(toflt(nr.Val()).U.(*Mpflt))
+			setconst(n, Val{c})
 		}
 	}
 }
@@ -1281,88 +1328,7 @@ func indexconst(n *Node) int64 {
 // Expressions derived from nil, like string([]byte(nil)), while they
 // may be known at compile time, are not Go language constants.
 func (n *Node) isGoConst() bool {
-	if n.Orig != nil {
-		n = n.Orig
-	}
-
-	switch n.Op {
-	case OADD,
-		OAND,
-		OANDAND,
-		OANDNOT,
-		OBITNOT,
-		ODIV,
-		OEQ,
-		OGE,
-		OGT,
-		OLE,
-		OLSH,
-		OLT,
-		ONEG,
-		OMOD,
-		OMUL,
-		ONE,
-		ONOT,
-		OOR,
-		OOROR,
-		OPLUS,
-		ORSH,
-		OSUB,
-		OXOR,
-		OIOTA,
-		OREAL,
-		OIMAG:
-		if n.Left.isGoConst() && (n.Right == nil || n.Right.isGoConst()) {
-			return true
-		}
-
-	case OCOMPLEX:
-		if n.List.Len() == 0 && n.Left.isGoConst() && n.Right.isGoConst() {
-			return true
-		}
-
-	case OADDSTR:
-		for _, n1 := range n.List.Slice() {
-			if !n1.isGoConst() {
-				return false
-			}
-		}
-		return true
-
-	case OCONV, OCONVNOP:
-		if okforconst[n.Type.Etype] && n.Left.isGoConst() {
-			return true
-		}
-
-	case OLEN, OCAP:
-		l := n.Left
-		if l.isGoConst() {
-			return true
-		}
-
-		// Special case: len/cap is constant when applied to array or
-		// pointer to array when the expression does not contain
-		// function calls or channel receive operations.
-		t := l.Type
-
-		if t != nil && t.IsPtr() {
-			t = t.Elem()
-		}
-		if t != nil && t.IsArray() && !hascallchan(l) {
-			return true
-		}
-
-	case OLITERAL:
-		if n.Val().Ctype() != CTNIL {
-			return true
-		}
-
-	case OALIGNOF, OOFFSETOF, OSIZEOF:
-		return true
-	}
-
-	//dump("nonconst", n);
-	return false
+	return n.Op == OLITERAL && n.Val().Ctype() != CTNIL
 }
 
 func hascallchan(n *Node) bool {

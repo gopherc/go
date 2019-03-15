@@ -105,7 +105,10 @@ func matchPackages(pattern string, tags map[string]bool, useStd bool, modules []
 	}
 
 	if cfg.BuildMod == "vendor" {
-		walkPkgs(filepath.Join(ModRoot(), "vendor"), "", false)
+		if HasModRoot() {
+			walkPkgs(ModRoot(), targetPrefix, false)
+			walkPkgs(filepath.Join(ModRoot(), "vendor"), "", false)
+		}
 		return pkgs
 	}
 
@@ -113,12 +116,13 @@ func matchPackages(pattern string, tags map[string]bool, useStd bool, modules []
 		if !treeCanMatch(mod.Path) {
 			continue
 		}
-		var root string
-		if mod.Version == "" {
+		var root, modPrefix string
+		if mod == Target {
 			if !HasModRoot() {
 				continue // If there is no main module, we can't search in it.
 			}
 			root = ModRoot()
+			modPrefix = targetPrefix
 		} else {
 			var err error
 			root, _, err = fetch(mod)
@@ -126,10 +130,7 @@ func matchPackages(pattern string, tags map[string]bool, useStd bool, modules []
 				base.Errorf("go: %v", err)
 				continue
 			}
-		}
-		modPrefix := mod.Path
-		if mod.Path == "std" {
-			modPrefix = ""
+			modPrefix = mod.Path
 		}
 		walkPkgs(root, modPrefix, false)
 	}

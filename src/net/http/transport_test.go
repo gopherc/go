@@ -42,7 +42,7 @@ import (
 	"testing"
 	"time"
 
-	"internal/x/net/http/httpguts"
+	"golang.org/x/net/http/httpguts"
 )
 
 // TODO: test 5 pipelined requests with responses: 1) OK, 2) OK, Connection: Close
@@ -865,6 +865,10 @@ func TestRoundTripGzip(t *testing.T) {
 			req.Header.Set("Accept-Encoding", test.accept)
 		}
 		res, err := tr.RoundTrip(req)
+		if err != nil {
+			t.Errorf("%d. RoundTrip: %v", i, err)
+			continue
+		}
 		var body []byte
 		if test.compressed {
 			var r *gzip.Reader

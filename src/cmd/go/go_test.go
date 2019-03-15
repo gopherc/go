@@ -2612,6 +2612,14 @@ func TestCoverageDepLoop(t *testing.T) {
 	tg.grepStdout("coverage: 100.0% of statements", "expected 100.0% coverage")
 }
 
+func TestCoverageNoStatements(t *testing.T) {
+	tooSlow(t)
+	tg := testgo(t)
+	defer tg.cleanup()
+	tg.run("test", "-cover", "./testdata/testcover/pkg4")
+	tg.grepStdout("[no statements]", "expected [no statements] for pkg4")
+}
+
 func TestCoverageImportMainLoop(t *testing.T) {
 	skipIfGccgo(t, "gccgo has no cover tool")
 	tg := testgo(t)
@@ -3670,7 +3678,7 @@ func TestGoGetInsecure(t *testing.T) {
 			tg.tempFile("go.mod", "module m")
 			tg.cd(tg.path("."))
 			tg.setenv("GO111MODULE", "on")
-			tg.setenv("GO111PROXY", "")
+			tg.setenv("GOPROXY", "")
 		} else {
 			tg.setenv("GOPATH", tg.path("."))
 			tg.setenv("GO111MODULE", "off")

@@ -1903,7 +1903,8 @@ func (b *Builder) runOut(dir string, env []string, cmdargs ...interface{}) ([]by
 	cleanup := passLongArgsInResponseFiles(cmd)
 	defer cleanup()
 	cmd.Dir = dir
-	cmd.Env = base.MergeEnvLists(env, base.EnvForDir(cmd.Dir, os.Environ()))
+	cmd.Env = base.EnvForDir(cmd.Dir, os.Environ())
+	cmd.Env = append(cmd.Env, env...)
 	err := cmd.Run()
 
 	// err can be something like 'exit status 1'.
@@ -2244,6 +2245,11 @@ func (b *Builder) compilerCmd(compiler []string, incdir, workdir string) []strin
 		}
 	}
 
+	if cfg.Goos == "aix" {
+		// mcmodel=large must always be enabled to allow large TOC.
+		a = append(a, "-mcmodel=large")
+	}
+
 	// disable ASCII art in clang errors, if possible
 	if b.gccSupportsFlag(compiler, "-fno-caret-diagnostics") {
 		a = append(a, "-fno-caret-diagnostics")
@@ -2322,7 +2328,8 @@ func (b *Builder) gccSupportsFlag(compiler []string, flag string) bool {
 	}
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	cmd.Dir = b.WorkDir
-	cmd.Env = base.MergeEnvLists([]string{"LC_ALL=C"}, base.EnvForDir(cmd.Dir, os.Environ()))
+	cmd.Env = base.EnvForDir(cmd.Dir, os.Environ())
+	cmd.Env = append(cmd.Env, "LC_ALL=C")
 	out, _ := cmd.CombinedOutput()
 	// GCC says "unrecognized command line option".
 	// clang says "unknown argument".
