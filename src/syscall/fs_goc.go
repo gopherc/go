@@ -7,16 +7,50 @@
 package syscall
 
 import (
+	"sync"
 	_ "syscall/js" // Need init to call setEventHandler
 	"unsafe"
 )
 
+var (
+	openFilesMut  sync.Mutex
+	handleCounter uint32 = 3
+	openFiles            = map[int]int64{}
+)
+
+func openFile(path unsafe.Pointer, openmode, perm uint32) int64
+
 func Open(path string, openmode int, perm uint32) (int, error) {
-	return 0, ENOSYS
+	openFilesMut.Lock()
+	defer openFilesMut.Unlock()
+
+	if handleCounter == 0 {
+		panic("handle wraparound")
+	}
+
+	fp := openFile(unsafe.Pointer(&path), uint32(openmode), perm)
+	if fp == 0 {
+		//TODO: Should return a real error. /aj
+		return 0, EIO
+	}
+
+	fd := int(handleCounter)
+	openFiles[fd] = fp
+	handleCounter++
+	return int(fd), nil
 }
 
+func closeFile(fd uintptr) uint32
+
 func Close(fd int) error {
-	return ENOSYS
+	openFilesMut.Lock()
+	defer openFilesMut.Unlock()
+
+	if handle, ok := openFiles[fd]; ok {
+		delete(openFiles, fd)
+		closeFile(uintptr(handle))
+	}
+	return EIO
 }
 
 func CloseOnExec(fd int) {

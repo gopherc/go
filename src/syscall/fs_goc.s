@@ -11,3 +11,11 @@ TEXT ·writeFile(SB), NOSPLIT, $0
 TEXT ·readFile(SB), NOSPLIT, $0
   CallImport
   RET
+
+TEXT ·openFile(SB), NOSPLIT, $0
+  CallImport
+  RET
+
+TEXT ·closeFile(SB), NOSPLIT, $0
+  CallImport
+  RET
