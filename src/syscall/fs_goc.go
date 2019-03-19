@@ -12,45 +12,31 @@ import (
 	"unsafe"
 )
 
-var (
-	openFilesMut  sync.Mutex
-	handleCounter uint32 = 3
-	openFiles            = map[int]int64{}
-)
+var openFilesMut sync.Mutex
 
-func openFile(path unsafe.Pointer, openmode, perm uint32) int64
+func openFile(path string, openmode, perm uint32) uintptr
 
 func Open(path string, openmode int, perm uint32) (int, error) {
 	openFilesMut.Lock()
 	defer openFilesMut.Unlock()
 
-	if handleCounter == 0 {
-		panic("handle wraparound")
+	fd := int(openFile(path, uint32(openmode), perm))
+	if fd < 0 {
+		return -1, EIO
 	}
-
-	fp := openFile(unsafe.Pointer(&path), uint32(openmode), perm)
-	if fp == 0 {
-		//TODO: Should return a real error. /aj
-		return 0, EIO
-	}
-
-	fd := int(handleCounter)
-	openFiles[fd] = fp
-	handleCounter++
-	return int(fd), nil
+	return fd, nil
 }
 
-func closeFile(fd uintptr) uint32
+func closeFile(fd uintptr) int32
 
 func Close(fd int) error {
 	openFilesMut.Lock()
 	defer openFilesMut.Unlock()
 
-	if handle, ok := openFiles[fd]; ok {
-		delete(openFiles, fd)
-		closeFile(uintptr(handle))
+	if closeFile(uintptr(fd)) != 0 {
+		return EIO
 	}
-	return EIO
+	return nil
 }
 
 func CloseOnExec(fd int) {
