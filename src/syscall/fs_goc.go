@@ -8,36 +8,16 @@ package syscall
 
 import (
 	"io"
-	"sync"
 	_ "syscall/js" // Need init to call setEventHandler
 	"unsafe"
 )
 
-var openFilesMut sync.Mutex
-
-func openFile(path string, openmode, perm uint32) uintptr
-
 func Open(path string, openmode int, perm uint32) (int, error) {
-	openFilesMut.Lock()
-	defer openFilesMut.Unlock()
-
-	fd := int(openFile(path, uint32(openmode), perm))
-	if fd < 0 {
-		return -1, EIO
-	}
-	return fd, nil
+	return 0, ENOSYS
 }
 
-func closeFile(fd uintptr) int32
-
 func Close(fd int) error {
-	openFilesMut.Lock()
-	defer openFilesMut.Unlock()
-
-	if closeFile(uintptr(fd)) != 0 {
-		return EIO
-	}
-	return nil
+	return ENOSYS
 }
 
 func CloseOnExec(fd int) {
@@ -132,13 +112,8 @@ func Symlink(path, link string) error {
 	return ENOSYS
 }
 
-func flushFile(fd uintptr) int32
-
 func Fsync(fd int) error {
-	if flushFile(uintptr(fd)) != 0 {
-		return EIO
-	}
-	return nil
+	return ENOSYS
 }
 
 func readFile(fd uintptr, p unsafe.Pointer, n int32) (int32, int32)
@@ -180,16 +155,8 @@ func Pwrite(fd int, b []byte, offset int64) (int, error) {
 	return 0, ENOSYS
 }
 
-func seekFile(fd uintptr, offset int64, whence int32) int32
-func tellFile(fd uintptr) int64
-
 func Seek(fd int, offset int64, whence int) (int64, error) {
-	if e := seekFile(uintptr(fd), offset, int32(whence)); e == 0 {
-		if p := tellFile(uintptr(fd)); p >= 0 {
-			return p, nil
-		}
-	}
-	return 0, EIO
+	return 0, ENOSYS
 }
 
 func Dup(fd int) (int, error) {
