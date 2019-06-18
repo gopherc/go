@@ -234,6 +234,12 @@ func os_beforeExit() {
 	}
 }
 
+//go:linkname getDebugG runtime/debug.getDebugG
+func getDebugG() uintptr {
+	g := getg()
+	return uintptr(unsafe.Pointer(g))
+}
+
 // start forcegc helper goroutine
 func init() {
 	go forcegchelper()
